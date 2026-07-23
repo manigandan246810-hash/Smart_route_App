@@ -2617,6 +2617,8 @@ export default function AdminDashboard({ token, onLogout }) {
                         </form>
                     </div>
                 </div>
+            )}
+
             {/* --- FLOATING TOAST NOTIFICATION POPUP --- */}
             {toast && (
                 <div style={{
