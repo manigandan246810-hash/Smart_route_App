@@ -1777,6 +1777,16 @@ app.post('/api/reports/reset', async (req, res) => {
     res.json({ success: true });
 });
 
+server.on('error', (err) => {
+    if (err.code === 'EADDRINUSE') {
+        console.error(`\n⚠️  Port ${PORT} is currently occupied by another background node process.`);
+        console.error(`👉 Run: npx kill-port ${PORT} (or stop existing node server processes) to free the port.\n`);
+        process.exit(1);
+    } else {
+        console.error('Server error:', err);
+    }
+});
+
 server.listen(PORT, () => {
     console.log(`SmartRoute Quantum Enterprise Server running on port ${PORT}`);
 });
