@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: smartroute-backend
+    env: node
+    plan: free
+    buildCommand: cd backend && npm install
+    startCommand: cd backend && npm start
+    envVars:
+      - key: PORT
+        value: "5000"
+      - key: JWT_SECRET
+        value: "smartroute_quantum_secret_key_987"
+      - key: MONGODB_URI
+        value: "mongodb+srv://manigandanag2007_db_user:kO8MEVwdKbJp24PS@cluster-quantum.zxz8tbf.mongodb.net/?appName=Cluster-quantum"
