@@ -8,7 +8,14 @@ void main() async {
   SharedPreferences prefs = await SharedPreferences.getInstance();
   String? token = prefs.getString('token');
   String? userJson = prefs.getString('user');
-  String? serverUrl = prefs.getString('server_url') ?? 'http://192.168.42.91:5000';
+  const String defaultProductionUrl = 'https://smartroute-backend-qp2k.onrender.com';
+  String serverUrl = prefs.getString('server_url') ?? defaultProductionUrl;
+
+  // Auto-migrate legacy local network IP addresses to the fixed production Render URL
+  if (serverUrl.contains('192.168.') || serverUrl.contains('localhost') || serverUrl.contains('127.0.0.1')) {
+    serverUrl = defaultProductionUrl;
+    await prefs.setString('server_url', defaultProductionUrl);
+  }
 
   runApp(DriverApp(
     initialToken: token,

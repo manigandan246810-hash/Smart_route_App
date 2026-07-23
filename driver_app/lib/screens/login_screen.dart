@@ -323,7 +323,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         TextFormField(
                           controller: _serverController,
                           decoration: const InputDecoration(
-                            hintText: 'http://192.168.42.91:5000',
+                            hintText: 'https://smartroute-backend-qp2k.onrender.com',
                           ),
                         ),
                       ],
