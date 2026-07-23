@@ -679,13 +679,13 @@ app.post('/api/orders/:id/accept', authenticateToken, async (req, res) => {
         const order = await db.orders.findOne(orderId);
         if (!order) return res.status(404).json({ message: 'Order not found' });
 
-        if (order.status !== 'Dispatching') {
-            return res.status(400).json({ message: 'Delivery already accepted by another driver.' });
+        if (order.status !== 'Dispatching' && order.status !== 'Pending' && order.status !== 'Assigned') {
+            return res.status(400).json({ message: 'Delivery already processed or unavailable.' });
         }
 
         const driver = await db.drivers.findOne(driverId);
         if (!driver) return res.status(404).json({ message: 'Driver not found.' });
-        if (driver.status !== 'Available') {
+        if (driver.status !== 'Available' && driver.status !== 'Assigned' && driver.status !== 'Delivering') {
             return res.status(400).json({ message: 'You are not available to accept this order.' });
         }
         if (!driver.vehicleId) {
@@ -694,24 +694,31 @@ app.post('/api/orders/:id/accept', authenticateToken, async (req, res) => {
 
         const vehicle = await db.vehicles.findOne(driver.vehicleId);
         if (!vehicle) return res.status(404).json({ message: 'Assigned vehicle not found.' });
-        if (vehicle.status !== 'Available') {
-            return res.status(400).json({ message: 'Assigned vehicle is not available.' });
-        }
 
-        const isSmallDelivery = (order.size || 0) < 100;
-        const isTwoWheeler = vehicle.category === 'Two-Wheeler' || vehicle.capacity <= 200 || driver.driverClass === 'Two-Wheeler Driver';
-
-        if (isSmallDelivery && !isTwoWheeler) {
-            return res.status(400).json({ message: 'Small deliveries (< 100 kg) are exclusively managed by Two-Wheeler drivers.' });
-        }
-        if (!isSmallDelivery && isTwoWheeler) {
-            return res.status(400).json({ message: 'Heavy deliveries (≥ 100 kg) are exclusively managed by 4-Wheeler drivers.' });
-        }
-
-        // Check if driver has any active trips
+        // Check if driver has an existing active trip
         const activeTrip = await db.trips.findByDriver(driverId);
         if (activeTrip) {
-            return res.status(400).json({ message: 'You already have an active trip assignment.' });
+            // If the active trip already belongs to this order, activate and confirm it seamlessly
+            if (activeTrip.orderIds && activeTrip.orderIds.includes(orderId)) {
+                await db.trips.update(activeTrip.id, { status: 'Active', acceptedAt: new Date().toISOString() });
+                await db.drivers.update(driverId, { status: 'Delivering' });
+                await db.vehicles.update(vehicle.id, { status: 'Busy' });
+                await db.orders.update(orderId, { status: 'In Transit', driverId: driver.id, vehicleId: vehicle.id });
+                
+                const io = req.app.get('io') || global.io;
+                if (io) {
+                    io.emit('dispatch:accepted', {
+                        tripId: activeTrip.id,
+                        driverId,
+                        driverName: driver.name,
+                        orderIds: activeTrip.orderIds,
+                        status: 'Active'
+                    });
+                }
+                return res.json({ success: true, status: 'Active', trip: activeTrip });
+            } else {
+                return res.status(400).json({ message: 'You already have another active trip assignment in progress.' });
+            }
         }
 
         // Lock order, driver, and vehicle
