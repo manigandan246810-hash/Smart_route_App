@@ -94,6 +94,19 @@ export default function AdminDashboard({ token, onLogout }) {
         return () => window.removeEventListener('resize', handleResize);
     }, []);
 
+    // Instant Feedback & Loading State Maps
+    const [actionLoading, setActionLoading] = useState({});
+    const [toast, setToast] = useState(null);
+
+    const showToast = (message, type = 'success') => {
+        setToast({ message, type });
+        setTimeout(() => setToast(null), 3200);
+    };
+
+    const setButtonLoading = (key, isLoading) => {
+        setActionLoading(prev => ({ ...prev, [key]: isLoading }));
+    };
+
     // Modals state
     const [showOrderModal, setShowOrderModal] = useState(false);
     const [showAssignModal, setShowAssignModal] = useState(false);
@@ -416,7 +429,18 @@ export default function AdminDashboard({ token, onLogout }) {
             fetchData();
         });
 
+        socket.on('dispatch:rejected', (data) => {
+            setDispatchingOrders(prev => {
+                const copy = { ...prev };
+                delete copy[data.orderId];
+                return copy;
+            });
+            showToast(`Order ${data.orderId || ''} rejected by driver ${data.driverName || ''}. Order returned to Pending queue.`, 'error');
+            fetchData();
+        });
+
         socket.on('system:reset', () => {
+            showToast('System State Reset: All orders reset to Pending & Drivers set to Active', 'info');
             fetchData();
         });
 
@@ -458,6 +482,11 @@ export default function AdminDashboard({ token, onLogout }) {
     const handleExecuteAssignment = async (e) => {
         e.preventDefault();
         if (!selectedOrderToAssign) return;
+        setButtonLoading(`assign-${selectedOrderToAssign.id}`, true);
+        
+        // Optimistic UI update
+        setOrders(prev => prev.map(o => o.id === selectedOrderToAssign.id ? { ...o, status: 'Assigned' } : o));
+
         try {
             const res = await fetch('http://localhost:5000/api/trips/assign', {
                 method: 'POST',
@@ -471,21 +500,27 @@ export default function AdminDashboard({ token, onLogout }) {
             });
 
             if (res.ok) {
-                alert("Quantum Route Optimized! Push notification dispatched to driver's mobile alert portal.");
+                showToast("Quantum Route Optimized! Push notification dispatched to driver.", 'success');
                 setShowAssignModal(false);
                 fetchData();
             } else {
                 const err = await res.json();
-                alert(err.message || "Failed to assign trip.");
+                showToast(err.message || "Failed to assign trip.", 'error');
+                fetchData(); // Rollback if error
             }
         } catch (e) {
             console.error(e);
+            showToast("Network error executing assignment.", 'error');
+            fetchData();
+        } finally {
+            setButtonLoading(`assign-${selectedOrderToAssign.id}`, false);
         }
     };
 
     // Create order
     const handleCreateOrder = async (e) => {
         e.preventDefault();
+        setButtonLoading('create-order', true);
         try {
             const res = await fetch('http://localhost:5000/api/orders', {
                 method: 'POST',
@@ -493,37 +528,54 @@ export default function AdminDashboard({ token, onLogout }) {
                 body: JSON.stringify(newOrder)
             });
             if (res.ok) {
+                showToast("New order created & added to Quantum dispatch queue!", 'success');
                 setShowOrderModal(false);
                 fetchData();
+            } else {
+                showToast("Failed to create order.", 'error');
             }
         } catch (e) {
             console.error(e);
+            showToast("Network error creating order.", 'error');
+        } finally {
+            setButtonLoading('create-order', false);
         }
     };
 
     // Delete Order
     const handleDeleteOrder = async (id) => {
         if (confirm("Cancel and delete this order?")) {
+            setOrders(prev => prev.filter(o => o.id !== id)); // Optimistic delete
+            showToast(`Order ${id} removed.`, 'info');
             try {
                 await fetch(`http://localhost:5000/api/orders/${id}`, { method: 'DELETE' });
                 fetchData();
             } catch (e) {
                 console.error(e);
+                fetchData();
             }
         }
     };
 
     // Start delivery dispatch flow (notifying closest available drivers)
     const handleStartDelivery = async (id) => {
+        setButtonLoading(`start-${id}`, true);
+        setOrders(prev => prev.map(o => o.id === id ? { ...o, status: 'Dispatching' } : o));
         try {
             const res = await fetch(`http://localhost:5000/api/orders/${id}/start-delivery`, { method: 'POST' });
             if (res.ok) {
+                showToast(`Dispatch request broadcasted to nearest drivers for Order ${id}!`, 'success');
                 fetchData();
             } else {
-                alert("Failed to initiate delivery dispatch.");
+                showToast("Failed to initiate delivery dispatch.", 'error');
+                fetchData();
             }
         } catch (e) {
             console.error(e);
+            showToast("Network error starting delivery.", 'error');
+            fetchData();
+        } finally {
+            setButtonLoading(`start-${id}`, false);
         }
     };
 
@@ -532,9 +584,10 @@ export default function AdminDashboard({ token, onLogout }) {
         try {
             const res = await fetch(`http://localhost:5000/api/events/traffic/${id}/toggle-sos`, { method: 'POST' });
             if (res.ok) {
+                showToast("Traffic SOS Zone updated! Quantum recalculating routes...", 'success');
                 fetchData();
             } else {
-                alert("Failed to toggle SOS Zone status.");
+                showToast("Failed to toggle SOS Zone status.", 'error');
             }
         } catch (e) {
             console.error(e);
@@ -548,11 +601,11 @@ export default function AdminDashboard({ token, onLogout }) {
                 method: 'POST'
             });
             if (res.ok) {
-                alert("Vehicle carrier brought back to life successfully!");
+                showToast("Vehicle carrier restored to live state!", 'success');
                 fetchData();
             } else {
                 const errData = await res.json().catch(() => ({}));
-                alert(errData.message || "Failed to restore vehicle carrier.");
+                showToast(errData.message || "Failed to restore vehicle carrier.", 'error');
             }
         } catch (err) {
             console.error("Error restoring vehicle:", err);
@@ -580,20 +633,24 @@ export default function AdminDashboard({ token, onLogout }) {
     // Restore all delivered orders to undelivered (Pending) status
     const handleResetDeliveredOrders = async () => {
         if (confirm("Are you sure you want to restore ALL delivered orders back to undelivered (Pending) status?")) {
+            setButtonLoading('reset-all', true);
             try {
                 const res = await fetch('http://localhost:5000/api/orders/reset-delivered', {
                     method: 'POST'
                 });
                 if (res.ok) {
                     const data = await res.json();
-                    alert(data.message || "All delivered orders brought back to undelivered status successfully!");
+                    showToast(data.message || "All orders reset to Pending & Drivers set to Active!", 'success');
                     fetchData();
                 } else {
                     const errData = await res.json().catch(() => ({}));
-                    alert(errData.message || "Failed to reset delivered orders.");
+                    showToast(errData.message || "Failed to reset delivered orders.", 'error');
                 }
             } catch (err) {
                 console.error("Error resetting delivered orders:", err);
+                showToast("Network error during system reset.", 'error');
+            } finally {
+                setButtonLoading('reset-all', false);
             }
         }
     };
@@ -2559,6 +2616,28 @@ export default function AdminDashboard({ token, onLogout }) {
                             </div>
                         </form>
                     </div>
+                </div>
+            {/* --- FLOATING TOAST NOTIFICATION POPUP --- */}
+            {toast && (
+                <div style={{
+                    position: 'fixed',
+                    bottom: '24px',
+                    right: '24px',
+                    zIndex: 9999,
+                    background: toast.type === 'error' ? '#ef4444' : (toast.type === 'info' ? '#3b82f6' : '#10b981'),
+                    color: '#ffffff',
+                    padding: '12px 20px',
+                    borderRadius: '10px',
+                    boxShadow: '0 10px 25px rgba(0,0,0,0.5)',
+                    fontWeight: 'bold',
+                    fontSize: '0.85rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '10px',
+                    transition: 'all 0.2s ease-out'
+                }}>
+                    <span>{toast.type === 'error' ? '❌' : (toast.type === 'info' ? 'ℹ️' : '✅')}</span>
+                    <span>{toast.message}</span>
                 </div>
             )}
 

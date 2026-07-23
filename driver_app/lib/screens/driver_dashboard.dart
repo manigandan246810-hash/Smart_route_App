@@ -595,11 +595,47 @@ class _DriverDashboardState extends State<DriverDashboard> with SingleTickerProv
     }
   }
 
-  void _handleRejectRequest(String? id) {
+  Future<void> _handleRejectRequest(String? id) async {
     if (id == null) return;
     setState(() {
       _hiddenNotifIds.add(id);
+      _isLoading = true;
     });
+
+    try {
+      if (_activeTripInfo?['trip'] != null) {
+        await http.post(
+          Uri.parse('${widget.serverUrl}/api/driver/trip/respond'),
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ${widget.token}',
+          },
+          body: jsonEncode({
+            'tripId': _activeTripInfo!['trip']['id'],
+            'action': 'reject',
+          }),
+        );
+      } else {
+        await http.post(
+          Uri.parse('${widget.serverUrl}/api/orders/$id/reject'),
+          headers: {'Authorization': 'Bearer ${widget.token}'},
+        );
+      }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('❌ Dispatch Request Rejected'),
+            backgroundColor: Colors.red,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+      _fetchActiveTrip();
+    } catch (e) {
+      print('Reject request error: $e');
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
   Future<void> _handleReportRoadblockSOS() async {

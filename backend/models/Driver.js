@@ -29,4 +29,7 @@ const driverSchema = new mongoose.Schema({
     _id: false
 });
 
+driverSchema.index({ status: 1, vehicleId: 1 });
+driverSchema.index({ email: 1 });
+
 export const Driver = mongoose.model('Driver', driverSchema);

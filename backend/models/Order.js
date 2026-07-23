@@ -19,4 +19,8 @@ const orderSchema = new mongoose.Schema({
     _id: false
 });
 
+orderSchema.index({ status: 1, driverId: 1 });
+orderSchema.index({ warehouseId: 1 });
+orderSchema.index({ createdAt: -1 });
+
 export const Order = mongoose.model('Order', orderSchema);

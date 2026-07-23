@@ -22,4 +22,7 @@ const tripSchema = new mongoose.Schema({
     _id: false
 });
 
+tripSchema.index({ driverId: 1, status: 1 });
+tripSchema.index({ vehicleId: 1 });
+
 export const Trip = mongoose.model('Trip', tripSchema);

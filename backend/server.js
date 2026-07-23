@@ -1039,43 +1039,105 @@ app.get('/api/driver/trip', authenticateToken, async (req, res) => {
     res.json({ trip, vehicle, warehouse, orders: ordersList });
 });
 
-// Respond to trip prompt (Accept / Reject)
+// Respond to trip prompt (Accept / Reject) with instant Socket.IO broadcast
 app.post('/api/driver/trip/respond', authenticateToken, async (req, res) => {
-    const { tripId, action } = req.body; // 'accept' or 'reject'
-    const trip = await db.trips.findOne(tripId);
-    if (!trip) return res.status(404).json({ message: 'Trip assignment not found' });
+    try {
+        const { tripId, action } = req.body; // 'accept' or 'reject'
+        const trip = await db.trips.findOne(tripId);
+        if (!trip) return res.status(404).json({ message: 'Trip assignment not found' });
 
-    if (action === 'accept') {
-        await db.trips.update(tripId, { status: 'Active', acceptedAt: new Date().toISOString() });
-        await db.drivers.update(req.user.id, { status: 'Delivering' });
-        await db.vehicles.update(trip.vehicleId, { status: 'Busy' });
-        for (const oid of trip.orderIds) {
-            await db.orders.update(oid, { status: 'In Transit' });
+        const io = req.app.get('io') || global.io;
+
+        if (action === 'accept') {
+            if (trip.status === 'Active') {
+                return res.json({ success: true, status: 'Active', message: 'Trip already active' });
+            }
+
+            await db.trips.update(tripId, { status: 'Active', acceptedAt: new Date().toISOString() });
+            await db.drivers.update(req.user.id, { status: 'Delivering' });
+            await db.vehicles.update(trip.vehicleId, { status: 'Busy' });
+            for (const oid of trip.orderIds) {
+                await db.orders.update(oid, { status: 'In Transit', driverId: req.user.id, vehicleId: trip.vehicleId });
+            }
+
+            await db.notifications.create({
+                title: 'Trip Accepted',
+                message: `Driver ${req.user.name} accepted Trip ${tripId}. Live navigation activated.`,
+                type: 'Trip',
+                driverId: req.user.id
+            });
+
+            if (io) {
+                io.emit('dispatch:accepted', {
+                    tripId,
+                    driverId: req.user.id,
+                    driverName: req.user.name,
+                    orderIds: trip.orderIds,
+                    status: 'Active'
+                });
+            }
+
+            return res.json({ success: true, status: 'Active', trip });
+        } else {
+            // Reject Route
+            await db.trips.update(tripId, { status: 'Rejected', rejectedAt: new Date().toISOString() });
+            await db.drivers.update(req.user.id, { status: 'Available', activeTrip: null });
+            await db.vehicles.update(trip.vehicleId, { status: 'Available' });
+            for (const oid of trip.orderIds) {
+                await db.orders.update(oid, { status: 'Pending', quantumStatus: 'Ready', driverId: null, vehicleId: null });
+            }
+
+            await db.notifications.create({
+                title: 'Trip Rejected',
+                message: `Driver ${req.user.name} rejected Assignment Trip ${tripId}. Order restored to Pending for re-allocation.`,
+                type: 'Alert',
+                driverId: req.user.id
+            });
+
+            if (io) {
+                io.emit('dispatch:rejected', {
+                    tripId,
+                    driverId: req.user.id,
+                    driverName: req.user.name,
+                    orderIds: trip.orderIds,
+                    status: 'Rejected'
+                });
+            }
+
+            return res.json({ success: true, status: 'Rejected' });
+        }
+    } catch (e) {
+        console.error('Trip response error:', e);
+        res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+// Reject single order directly by driver
+app.post('/api/orders/:id/reject', authenticateToken, async (req, res) => {
+    try {
+        const orderId = req.params.id;
+        const driverId = req.user.id;
+
+        const order = await db.orders.findOne(orderId);
+        if (!order) return res.status(404).json({ message: 'Order not found' });
+
+        await db.orders.update(orderId, {
+            status: 'Pending',
+            quantumStatus: 'Ready',
+            driverId: null,
+            vehicleId: null
+        });
+
+        await db.drivers.update(driverId, { status: 'Available', activeTrip: null });
+
+        const io = req.app.get('io') || global.io;
+        if (io) {
+            io.emit('dispatch:rejected', { orderId, driverId });
         }
 
-        await db.notifications.create({
-            title: 'Trip Accepted',
-            message: `Driver ${req.user.name} accepted Trip ${tripId}. Dispatch locked.`,
-            type: 'Trip',
-            driverId: req.user.id
-        });
-        return res.json({ success: true, status: 'Active' });
-    } else {
-        // Reject Route
-        await db.trips.update(tripId, { status: 'Rejected', rejectedAt: new Date().toISOString() });
-        await db.drivers.update(req.user.id, { status: 'Available' });
-        await db.vehicles.update(trip.vehicleId, { status: 'Available' });
-        for (const oid of trip.orderIds) {
-            await db.orders.update(oid, { status: 'Pending', quantumStatus: 'Ready', driverId: null, vehicleId: null });
-        }
-
-        await db.notifications.create({
-            title: 'Trip Rejected',
-            message: `Driver ${req.user.name} rejected Assignment Trip ${tripId}. Please re-allocate.`,
-            type: 'Alert',
-            driverId: req.user.id
-        });
-        return res.json({ success: true, status: 'Rejected' });
+        res.json({ success: true, message: 'Order rejected and returned to pending queue.' });
+    } catch (e) {
+        res.status(500).json({ success: false, message: e.message });
     }
 });
 
