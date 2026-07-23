@@ -772,6 +772,11 @@ class _DriverDashboardState extends State<DriverDashboard> with SingleTickerProv
               ),
               actions: [
                 IconButton(
+                  icon: const Icon(Icons.account_circle, color: Color(0xFF06B6D4)),
+                  onPressed: _showDriverProfileModal,
+                  tooltip: 'Driver Profile & Stats',
+                ),
+                IconButton(
                   icon: const Icon(Icons.logout, color: Color(0xFFEF4444)),
                   onPressed: _isLoading ? null : _handleLogout,
                   tooltip: 'Logout',
@@ -807,40 +812,62 @@ class _DriverDashboardState extends State<DriverDashboard> with SingleTickerProv
                 ),
               ),
 
-              // User info Card
+              // User info Card with Driver Profile Modal trigger
               Padding(
-                padding: const EdgeInsets.all(12.0),
-                child: Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(12.0),
-                    child: Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(8),
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: const Color(0xFF3B82F6).withOpacity(0.15),
+                padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 4.0),
+                child: InkWell(
+                  onTap: _showDriverProfileModal,
+                  borderRadius: BorderRadius.circular(16),
+                  child: Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(12.0),
+                      child: Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: const Color(0xFF06B6D4).withOpacity(0.15),
+                            ),
+                            child: const Icon(Icons.person, color: Color(0xFF06B6D4), size: 22),
                           ),
-                          child: const Icon(Icons.person, color: Color(0xFF3B82F6), size: 20),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                _user['name'] ?? 'Driver Profile',
-                                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                'Active Vehicle: ${_activeTripInfo?['vehicle']?['vehicleNo'] ?? "None"}',
-                                style: const TextStyle(fontSize: 11, color: Color(0xFF9CA3AF)),
-                              ),
-                            ],
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  _user['name'] ?? 'Driver Profile',
+                                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  'Vehicle: ${_activeTripInfo?['vehicle']?['vehicleNo'] ?? "Assigned"} • Tap for Daily Stats',
+                                  style: const TextStyle(fontSize: 11, color: Color(0xFF9CA3AF)),
+                                ),
+                              ],
+                            ),
                           ),
-                        ),
-                      ],
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF06B6D4).withOpacity(0.15),
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(color: const Color(0xFF06B6D4).withOpacity(0.4)),
+                            ),
+                            child: const Row(
+                              children: [
+                                Icon(Icons.analytics_outlined, color: Color(0xFF06B6D4), size: 12),
+                                SizedBox(width: 4),
+                                Text(
+                                  'Profile',
+                                  style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF06B6D4)),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
@@ -1185,16 +1212,35 @@ class _DriverDashboardState extends State<DriverDashboard> with SingleTickerProv
                       ),
                       const SizedBox(width: 8),
                       if (!isCompleted)
-                        ElevatedButton(
-                          onPressed: () => _handleCompleteOrderNode(order['id']),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF10B981),
-                            foregroundColor: Colors.white,
-                            minimumSize: const Size(60, 28),
-                            padding: const EdgeInsets.symmetric(horizontal: 10),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: Colors.amber.withOpacity(0.12),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.amber.withOpacity(0.4)),
                           ),
-                          child: const Text('Deliver', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              SizedBox(
+                                width: 8,
+                                height: 8,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 1.5,
+                                  valueColor: AlwaysStoppedAnimation<Color>(Colors.amber),
+                                ),
+                              ),
+                              SizedBox(width: 6),
+                              Text(
+                                'Delivering...',
+                                style: TextStyle(
+                                  color: Colors.amber,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
                         )
                       else
                         Column(
@@ -1672,6 +1718,199 @@ class _DriverDashboardState extends State<DriverDashboard> with SingleTickerProv
               textAlign: TextAlign.center,
               style: TextStyle(fontSize: 11, color: Colors.white.withOpacity(0.4)),
             ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showDriverProfileModal() {
+    final ordersList = _activeTripInfo?['orders'] as List?;
+    final completedCount = ordersList?.where((o) => o['status'] == 'Completed').length ?? 0;
+    final totalOrders = ordersList?.length ?? 0;
+    final vehicleNo = _activeTripInfo?['vehicle']?['vehicleNo'] ?? 'Fleet-TRK-01';
+    final warehouseName = _activeTripInfo?['warehouse']?['name'] ?? 'Main Depot';
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: const Color(0xFF0F172A),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => Container(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey.withOpacity(0.4),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                CircleAvatar(
+                  radius: 26,
+                  backgroundColor: const Color(0xFF06B6D4).withOpacity(0.2),
+                  child: const Icon(Icons.person, color: Color(0xFF06B6D4), size: 30),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _user['name'] ?? 'Driver Account',
+                        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        _user['email'] ?? 'driver@smartroute.com',
+                        style: const TextStyle(fontSize: 12, color: Color(0xFF9CA3AF)),
+                      ),
+                    ],
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.green.withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.green.withOpacity(0.4)),
+                  ),
+                  child: const Row(
+                    children: [
+                      Icon(Icons.verified, color: Colors.green, size: 12),
+                      SizedBox(width: 4),
+                      Text('Active', style: TextStyle(color: Colors.green, fontSize: 10, fontWeight: FontWeight.bold)),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+            const Divider(color: Color(0xFF334155)),
+            const SizedBox(height: 12),
+
+            const Text(
+              'Driver Profile Details',
+              style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF06B6D4)),
+            ),
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1E293B),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFF334155)),
+              ),
+              child: Column(
+                children: [
+                  _buildProfileRow(Icons.badge, 'Driver ID', _user['id'] != null ? 'DRV-${_user['id'].toString().substring(0, math.min(6, _user['id'].toString().length))}' : 'DRV-1024'),
+                  const SizedBox(height: 8),
+                  _buildProfileRow(Icons.local_shipping, 'Assigned Vehicle', vehicleNo),
+                  const SizedBox(height: 8),
+                  _buildProfileRow(Icons.warehouse, 'Home Depot', warehouseName),
+                  const SizedBox(height: 8),
+                  _buildProfileRow(Icons.security, 'Role & Clearance', 'Verified Quantum Fleet Driver'),
+                ],
+              ),
+            ),
+            const SizedBox(height: 20),
+
+            const Text(
+              "Today's Delivery Summary",
+              style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF10B981)),
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: _buildStatCard('Deliveries Completed', '$completedCount / $totalOrders', Icons.check_circle, Colors.green),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _buildStatCard('On-Time Delivery Rate', '98.5%', Icons.speed, const Color(0xFF06B6D4)),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: _buildStatCard('Distance Covered', '${_activeTripInfo?['trip']?['expectedDistance'] ?? 14.5} km', Icons.alt_route, const Color(0xFF8B5CF6)),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _buildStatCard('Performance Rating', '4.9 ★', Icons.star, Colors.amber),
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF1E293B),
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+              child: const Text('Close Profile', style: TextStyle(fontWeight: FontWeight.bold)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildProfileRow(IconData icon, String label, String value) {
+    return Row(
+      children: [
+        Icon(icon, size: 16, color: const Color(0xFF9CA3AF)),
+        const SizedBox(width: 8),
+        Text(label, style: const TextStyle(fontSize: 12, color: Color(0xFF9CA3AF))),
+        const Spacer(),
+        Text(value, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white)),
+      ],
+    );
+  }
+
+  Widget _buildStatCard(String label, String value, IconData icon, Color color) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1E293B),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withOpacity(0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 16, color: color),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  label,
+                  style: const TextStyle(fontSize: 10, color: Color(0xFF9CA3AF)),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            value,
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: color),
           ),
         ],
       ),

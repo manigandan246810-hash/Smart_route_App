@@ -289,9 +289,79 @@ class _LoginScreenState extends State<LoginScreen> {
                       // Advanced / Settings trigger
                       InkWell(
                         onTap: () {
-                          setState(() {
-                            _showSettings = !_showSettings;
-                          });
+                          if (_showSettings) {
+                            setState(() {
+                              _showSettings = false;
+                            });
+                          } else {
+                            final passController = TextEditingController();
+                            showDialog(
+                              context: context,
+                              builder: (context) => AlertDialog(
+                                backgroundColor: const Color(0xFF1E293B),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                                title: const Row(
+                                  children: [
+                                    Icon(Icons.lock, color: Color(0xFF06B6D4), size: 20),
+                                    SizedBox(width: 8),
+                                    Text('Admin Lock', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
+                                  ],
+                                ),
+                                content: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Text(
+                                      'Enter security password to modify backend URL:',
+                                      style: TextStyle(fontSize: 12, color: Color(0xFF9CA3AF)),
+                                    ),
+                                    const SizedBox(height: 12),
+                                    TextField(
+                                      controller: passController,
+                                      obscureText: true,
+                                      keyboardType: TextInputType.number,
+                                      autofocus: true,
+                                      style: const TextStyle(color: Colors.white),
+                                      decoration: const InputDecoration(
+                                        hintText: 'Security Password',
+                                        prefixIcon: Icon(Icons.key, color: Color(0xFF9CA3AF), size: 18),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () => Navigator.pop(context),
+                                    child: const Text('Cancel', style: TextStyle(color: Color(0xFF9CA3AF))),
+                                  ),
+                                  ElevatedButton(
+                                    onPressed: () {
+                                      if (passController.text.trim() == '123321') {
+                                        Navigator.pop(context);
+                                        setState(() {
+                                          _showSettings = true;
+                                        });
+                                      } else {
+                                        Navigator.pop(context);
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          const SnackBar(
+                                            content: Text('❌ Incorrect Security Password! Access Denied.'),
+                                            backgroundColor: Colors.red,
+                                            behavior: SnackBarBehavior.floating,
+                                          ),
+                                        );
+                                      }
+                                    },
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: const Color(0xFF06B6D4),
+                                      foregroundColor: Colors.black,
+                                    ),
+                                    child: const Text('Unlock', style: TextStyle(fontWeight: FontWeight.bold)),
+                                  ),
+                                ],
+                              ),
+                            );
+                          }
                         },
                         child: Padding(
                           padding: const EdgeInsets.symmetric(vertical: 8.0),
@@ -299,13 +369,13 @@ class _LoginScreenState extends State<LoginScreen> {
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
                               Icon(
-                                _showSettings ? Icons.expand_less : Icons.settings,
+                                _showSettings ? Icons.expand_less : Icons.lock_outline,
                                 size: 16,
                                 color: const Color(0xFF9CA3AF),
                               ),
                               const SizedBox(width: 6),
                               Text(
-                                _showSettings ? 'Hide Backend Settings' : 'Advanced: Configure Backend IP',
+                                _showSettings ? 'Hide Backend Settings' : 'Advanced: Configure Backend IP (Locked 🔒)',
                                 style: const TextStyle(color: Color(0xFF9CA3AF), fontSize: 13),
                               ),
                             ],
