@@ -30,6 +30,8 @@ class _DriverDashboardState extends State<DriverDashboard> with SingleTickerProv
   Map<String, dynamic>? _activeTripInfo;
   List<dynamic> _notificationsQueue = [];
   final Set<String> _hiddenNotifIds = {};
+  final Set<String> _processedCompletedOrderIds = {};
+  List<dynamic> _localDeliveryHistory = [];
   bool _isLoading = false;
   int _gpsSimIndex = 0;
   int _batteryLevel = 85;
@@ -178,6 +180,7 @@ class _DriverDashboardState extends State<DriverDashboard> with SingleTickerProv
       }
     });
 
+    _loadLocalHistory();
     _fetchActiveTrip();
 
     // Start background sync polling every 4 seconds
@@ -390,7 +393,8 @@ class _DriverDashboardState extends State<DriverDashboard> with SingleTickerProv
         final orders = _activeTripInfo?['orders'] as List?;
         if (orders != null) {
           for (var order in orders) {
-            if (order['status'] != 'Completed') {
+            final orderId = order['id'].toString();
+            if (order['status'] != 'Completed' && !_processedCompletedOrderIds.contains(orderId)) {
               final cust = order['customer'];
               if (cust != null) {
                 final cLat = cust['latitude'] as num?;
@@ -401,7 +405,10 @@ class _DriverDashboardState extends State<DriverDashboard> with SingleTickerProv
                   );
                   // Arrival proximity threshold (~250-300 meters)
                   if (dist < 0.0035) {
-                    _handleCompleteOrderNode(order['id']);
+                    _processedCompletedOrderIds.add(orderId);
+                    _handleCompleteOrderNode(order['id'], cust);
+                    
+                    // Single notification on driver device
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
                         content: Row(
@@ -682,8 +689,66 @@ class _DriverDashboardState extends State<DriverDashboard> with SingleTickerProv
     }
   }
 
-  Future<void> _handleCompleteOrderNode(String orderId) async {
+  Future<void> _loadLocalHistory() async {
     try {
+      final prefs = await SharedPreferences.getInstance();
+      final String? jsonStr = prefs.getString('driver_delivery_history');
+      if (jsonStr != null) {
+        final List<dynamic> loaded = jsonDecode(jsonStr);
+        if (mounted) {
+          setState(() {
+            _localDeliveryHistory = loaded;
+          });
+        }
+      }
+    } catch (e) {
+      print('Error loading local delivery history: $e');
+    }
+  }
+
+  Future<void> _saveDeliveryToHistoryLocally(String orderId, [dynamic customerInfo]) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final now = DateTime.now();
+      final String formattedDate = "${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')} ${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')}";
+
+      final String custName = customerInfo is Map ? (customerInfo['name'] ?? 'Customer') : 'Customer';
+      final String custAddress = customerInfo is Map ? (customerInfo['address'] ?? 'Delivery Address') : 'Delivery Location';
+
+      final newEntry = {
+        'orderId': orderId,
+        'customerName': custName,
+        'address': custAddress,
+        'deliveredAt': formattedDate,
+        'status': 'Delivered',
+      };
+
+      final String? existingStr = prefs.getString('driver_delivery_history');
+      List<dynamic> history = [];
+      if (existingStr != null) {
+        try {
+          history = jsonDecode(existingStr);
+        } catch (_) {}
+      }
+
+      if (!history.any((item) => item['orderId'] == orderId)) {
+        history.insert(0, newEntry);
+        if (history.length > 100) history = history.sublist(0, 100);
+        await prefs.setString('driver_delivery_history', jsonEncode(history));
+        if (mounted) {
+          setState(() {
+            _localDeliveryHistory = history;
+          });
+        }
+      }
+    } catch (e) {
+      print('Error saving delivery history: $e');
+    }
+  }
+
+  Future<void> _handleCompleteOrderNode(String orderId, [dynamic customerInfo]) async {
+    try {
+      await _saveDeliveryToHistoryLocally(orderId, customerInfo);
       final res = await http.post(
         Uri.parse('${widget.serverUrl}/api/driver/trip/complete-node'),
         headers: {
@@ -1066,65 +1131,7 @@ class _DriverDashboardState extends State<DriverDashboard> with SingleTickerProv
                     ],
                   ),
                   const SizedBox(height: 10),
-                  // Auto-Drive & Deliver Movement Controls
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF0F172A),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: _isAutoDriving ? const Color(0xFF10B981) : const Color(0xFF334155)),
-                    ),
-                    child: Row(
-                      children: [
-                        ElevatedButton.icon(
-                          onPressed: () {
-                            setState(() {
-                              _isAutoDriving = !_isAutoDriving;
-                            });
-                          },
-                          icon: Icon(_isAutoDriving ? Icons.pause : Icons.play_arrow, size: 16),
-                          label: Text(
-                            _isAutoDriving ? 'Pause Travel' : 'Auto-Drive & Deliver',
-                            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
-                          ),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: _isAutoDriving ? const Color(0xFF10B981) : const Color(0xFF06B6D4),
-                            foregroundColor: Colors.black,
-                            minimumSize: const Size(130, 32),
-                            padding: const EdgeInsets.symmetric(horizontal: 10),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: OutlinedButton.icon(
-                            onPressed: () {
-                              if (roadRoute != null && roadRoute.isNotEmpty) {
-                                setState(() {
-                                  _gpsSimIndex = (_gpsSimIndex + 1) % roadRoute.length;
-                                });
-                                final currentPos = roadRoute[_gpsSimIndex];
-                                final lat = currentPos['latitude'] as num?;
-                                final lng = currentPos['longitude'] as num?;
-                                if (lat != null && lng != null) {
-                                  _animateToPosition(LatLng(lat.toDouble(), lng.toDouble()));
-                                }
-                              }
-                            },
-                            icon: const Icon(Icons.fast_forward, size: 14),
-                            label: const Text('Step +1', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: const Color(0xFF06B6D4),
-                              side: const BorderSide(color: Color(0xFF06B6D4)),
-                              minimumSize: const Size.fromHeight(32),
-                              padding: EdgeInsets.zero,
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+
                   const SizedBox(height: 10),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -1243,22 +1250,28 @@ class _DriverDashboardState extends State<DriverDashboard> with SingleTickerProv
                           ),
                         )
                       else
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.end,
-                          children: [
-                            const Row(
-                              children: [
-                                Icon(Icons.check_circle_outline, color: Color(0xFF10B981), size: 14),
-                                SizedBox(width: 4),
-                                Text('Done', style: TextStyle(color: Color(0xFF10B981), fontSize: 11, fontWeight: FontWeight.bold)),
-                              ],
-                            ),
-                            if (order['actualTimeTakenMinutes'] != null)
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: Colors.green.withOpacity(0.15),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.green.withOpacity(0.4)),
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.check_circle, color: Color(0xFF10B981), size: 12),
+                              SizedBox(width: 4),
                               Text(
-                                'Took: ${order['actualTimeTakenMinutes']}m',
-                                style: const TextStyle(color: Color(0xFF9CA3AF), fontSize: 9),
+                                'Delivered',
+                                style: TextStyle(
+                                  color: Color(0xFF10B981),
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                ),
                               ),
-                          ],
+                            ],
+                          ),
                         ),
                     ],
                   ),
@@ -1853,6 +1866,90 @@ class _DriverDashboardState extends State<DriverDashboard> with SingleTickerProv
                   child: _buildStatCard('Performance Rating', '4.9 ★', Icons.star, Colors.amber),
                 ),
               ],
+            ),
+            const SizedBox(height: 20),
+
+            // Local Device Delivery History Log
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  'Saved Device Delivery Log',
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF3B82F6)),
+                ),
+                Text(
+                  '${_localDeliveryHistory.length} Recorded',
+                  style: const TextStyle(fontSize: 11, color: Color(0xFF9CA3AF)),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Container(
+              constraints: const BoxConstraints(maxHeight: 180),
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1E293B),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFF334155)),
+              ),
+              child: _localDeliveryHistory.isEmpty
+                  ? const Center(
+                      child: Padding(
+                        padding: EdgeInsets.all(16.0),
+                        child: Text(
+                          'No local delivery records logged yet today.',
+                          style: TextStyle(fontSize: 11, color: Color(0xFF9CA3AF)),
+                        ),
+                      ),
+                    )
+                  : ListView.builder(
+                      shrinkWrap: true,
+                      itemCount: _localDeliveryHistory.length,
+                      itemBuilder: (context, idx) {
+                        final item = _localDeliveryHistory[idx];
+                        return Container(
+                          margin: const EdgeInsets.only(bottom: 6),
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF0F172A),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.check_circle, color: Color(0xFF10B981), size: 16),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      item['customerName'] ?? 'Customer',
+                                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      '📅 Date & Time: ${item['deliveredAt'] ?? ""}',
+                                      style: const TextStyle(fontSize: 10, color: Color(0xFF10B981), fontWeight: FontWeight.w600),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: Colors.green.withOpacity(0.15),
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: const Text(
+                                  'Delivered',
+                                  style: TextStyle(color: Color(0xFF10B981), fontSize: 9, fontWeight: FontWeight.bold),
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
             ),
             const SizedBox(height: 20),
             ElevatedButton(
