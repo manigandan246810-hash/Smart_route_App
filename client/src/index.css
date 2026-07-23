@@ -34,6 +34,22 @@
   box-sizing: border-box;
 }
 
+/* Smooth 60 FPS gliding motion for Leaflet map markers on Admin Map */
+.leaflet-marker-icon {
+  transition: transform 0.8s ease-out, left 0.8s ease-out, top 0.8s ease-out !important;
+}
+
+/* Fast-reacting, smooth UI buttons */
+button, .btn {
+  transition: all 0.12s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  touch-action: manipulation;
+}
+
+button:active, .btn:active {
+  transform: scale(0.97) !important;
+  opacity: 0.9 !important;
+}
+
 /* Clean Dark Theme (Simple, flat, no heavy glowing effects) */
 [data-theme="dark"] {
   --bg-primary: #0f172a;        /* Slate 900 */

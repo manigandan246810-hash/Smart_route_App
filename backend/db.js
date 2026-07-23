@@ -131,7 +131,7 @@ export async function seedDatabase() {
                     joinedDate: d.joinedDate
                 });
             } else {
-                await Driver.updateOne({ _id: d.id }, { $set: { vehicleId: d.vehicleId, driverClass: d.driverClass || '4-Wheeler Driver' } });
+                await Driver.updateOne({ _id: d.id }, { $set: { vehicleId: d.vehicleId, driverClass: d.driverClass || '4-Wheeler Driver', status: 'Available', activeTrip: null } });
             }
         }
 

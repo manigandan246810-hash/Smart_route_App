@@ -198,12 +198,8 @@ export default function InteractiveMap({
         if (!mapRef.current) return;
         const map = mapRef.current;
 
-        // Clear old markers
-        Object.keys(markersRef.current).forEach(key => {
-            map.removeLayer(markersRef.current[key]);
-            delete markersRef.current[key];
-        });
-
+        const newMarkersMap = {};
+        const oldMarkersMap = { ...markersRef.current };
         const allItems = [];
 
         // 1. Warehouses (Hubs)
@@ -368,7 +364,7 @@ export default function InteractiveMap({
             });
         }
 
-        // Proximity grouping (group coordinates closer than ~30 meters)
+        // Proximity grouping
         const groups = [];
         const threshold = 0.0003;
 
@@ -388,7 +384,7 @@ export default function InteractiveMap({
             }
         });
 
-        // Draw groups with circular dispersion layout (no folders, no tabs!)
+        // Draw markers using marker reuse (Smooth 60 FPS gliding motion)
         groups.forEach((group, groupIdx) => {
             const N = group.items.length;
             group.items.forEach((item, i) => {
@@ -396,7 +392,6 @@ export default function InteractiveMap({
                 let finalLng = item.lng;
 
                 if (N > 1) {
-                    // Spread items around the center coordinate in a small circle (radius ~30 meters)
                     const angle = (i * 2 * Math.PI) / N;
                     const radius = 0.00035; 
                     finalLat = group.lat + Math.cos(angle) * radius;
@@ -418,17 +413,21 @@ export default function InteractiveMap({
                     markerIcon = createSvgIcon('traffic');
                 }
 
-                const marker = L.marker([finalLat, finalLng], {
-                    icon: markerIcon
-                }).addTo(map);
+                const markerKey = `item-${item.type}-${item.raw?.id || item.raw?._id || groupIdx}-${i}`;
+                let marker = oldMarkersMap[markerKey];
 
-                // If traveling point, hook click listener to select trip in live delivery card
-                if (item.type === 'traveling') {
-                    marker.on('click', () => {
-                        if (onTripSelect) {
-                            onTripSelect(item.tripId);
-                        }
-                    });
+                if (marker) {
+                    // Update location smoothly
+                    marker.setLatLng([finalLat, finalLng]);
+                    if (markerIcon) marker.setIcon(markerIcon);
+                    delete oldMarkersMap[markerKey];
+                } else {
+                    marker = L.marker([finalLat, finalLng], { icon: markerIcon }).addTo(map);
+                    if (item.type === 'traveling') {
+                        marker.on('click', () => {
+                            if (onTripSelect) onTripSelect(item.tripId);
+                        });
+                    }
                 }
 
                 const popupContent = `
@@ -438,9 +437,15 @@ export default function InteractiveMap({
                 `;
 
                 marker.bindPopup(popupContent, { maxWidth: 240 });
-                markersRef.current[`item-${item.type}-${item.raw.id || item.raw._id || groupIdx}-${i}`] = marker;
+                newMarkersMap[markerKey] = marker;
             });
         });
+
+        // Clean up removed markers
+        Object.keys(oldMarkersMap).forEach(key => {
+            map.removeLayer(oldMarkersMap[key]);
+        });
+        markersRef.current = newMarkersMap;
 
         // Clear old polylines
         Object.keys(polylinesRef.current).forEach(key => {

@@ -401,26 +401,44 @@ app.post('/api/orders/reset-delivered', async (req, res) => {
         const orders = await db.orders.find();
         let count = 0;
         for (const o of orders) {
-            if (o.status === 'Completed') {
-                await db.orders.update(o.id, {
-                    status: 'Pending',
-                    quantumStatus: 'Ready',
-                    driverId: null,
-                    vehicleId: null,
-                    actualTimeTakenMinutes: null
-                });
-                count++;
+            await db.orders.update(o.id, {
+                status: 'Pending',
+                quantumStatus: 'Ready',
+                driverId: null,
+                vehicleId: null,
+                actualTimeTakenMinutes: null
+            });
+            count++;
+        }
+
+        const trips = await db.trips.find();
+        for (const t of trips) {
+            if (t.status === 'Active' || t.status === 'Assigned') {
+                await db.trips.update(t.id, { status: 'Completed' });
             }
         }
+
+        const driversList = await db.drivers.find();
+        for (const d of driversList) {
+            await db.drivers.update(d.id, {
+                status: 'Available',
+                activeTrip: null,
+                currentSpeed: 0
+            });
+        }
+
+        if (typeof io !== 'undefined' && io) {
+            io.emit('system:reset', { timestamp: Date.now() });
+        }
+
         await db.notifications.create({
-            title: 'Delivered Orders Restored',
-            message: `${count} delivered order(s) brought back to undelivered (Pending) state by administrator.`,
+            title: 'System Orders & Drivers Reset',
+            message: `All orders (${count}) reset to Pending and all drivers (including Driver 6) set back to Active/Available.`,
             type: 'Order'
         });
-        res.json({ success: true, count, message: `Successfully restored ${count} delivered order(s) back to undelivered (Pending) state!` });
+        res.json({ success: true, count, message: `Successfully reset all orders to Pending and set Driver 6 & all drivers back to Active/Available!` });
     } catch (e) {
-        console.error(e);
-        res.status(500).json({ message: e.message });
+        res.status(500).json({ success: false, message: 'Reset failed' });
     }
 });
 
@@ -1703,6 +1721,55 @@ setInterval(async () => {
         console.error("Simulation tick error:", e);
     }
 }, 1000);
+
+// Master System Reset Endpoint: Resets all orders to Pending and sets Driver 6 & all drivers back to Available/Active
+app.post('/api/admin/reset-system', async (req, res) => {
+    try {
+        const orders = await db.orders.find();
+        let resetOrdersCount = 0;
+        for (const o of orders) {
+            await db.orders.update(o.id, {
+                status: 'Pending',
+                quantumStatus: 'Ready',
+                driverId: null,
+                vehicleId: null,
+                actualTimeTakenMinutes: null
+            });
+            resetOrdersCount++;
+        }
+
+        const trips = await db.trips.find();
+        for (const t of trips) {
+            if (t.status === 'Active' || t.status === 'Assigned') {
+                await db.trips.update(t.id, { status: 'Completed' });
+            }
+        }
+
+        const driversList = await db.drivers.find();
+        let resetDriversCount = 0;
+        for (const d of driversList) {
+            await db.drivers.update(d.id, {
+                status: 'Available',
+                activeTrip: null,
+                currentSpeed: 0
+            });
+            resetDriversCount++;
+        }
+
+        io.emit('system:reset', { timestamp: Date.now() });
+
+        console.log(`✅ System Reset Complete: ${resetOrdersCount} orders reset to Pending, ${resetDriversCount} drivers (including Driver 6) reset to Available.`);
+        res.json({ 
+            success: true, 
+            resetOrdersCount, 
+            resetDriversCount,
+            message: `Reset all ${resetOrdersCount} orders to Pending and set Driver 6 & all ${resetDriversCount} drivers back to Active/Available!` 
+        });
+    } catch (e) {
+        console.error('Error during master reset:', e);
+        res.status(500).json({ success: false, message: 'Reset failed' });
+    }
+});
 
 // App reset
 app.post('/api/reports/reset', async (req, res) => {

@@ -416,6 +416,10 @@ export default function AdminDashboard({ token, onLogout }) {
             fetchData();
         });
 
+        socket.on('system:reset', () => {
+            fetchData();
+        });
+
         return () => {
             clearInterval(interval);
             socket.disconnect();
