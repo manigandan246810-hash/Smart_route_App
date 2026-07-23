@@ -3,6 +3,7 @@ import cors from 'cors';
 import jwt from 'jsonwebtoken';
 import dotenv from 'dotenv';
 import http from 'http';
+import { execSync } from 'child_process';
 import { Server } from 'socket.io';
 import { db, seedDatabase } from './db.js';
 import { connectDB } from './config/database.js';
@@ -1777,8 +1778,22 @@ app.post('/api/reports/reset', async (req, res) => {
     res.json({ success: true });
 });
 
+let retryCount = 0;
 server.on('error', (err) => {
-    if (err.code === 'EADDRINUSE') {
+    if (err.code === 'EADDRINUSE' && retryCount < 2) {
+        retryCount++;
+        console.log(`⚠️  Port ${PORT} is occupied by an old process. Automatically clearing port ${PORT}...`);
+        try {
+            if (process.platform === 'win32') {
+                execSync(`powershell -Command "Get-NetTCPConnection -LocalPort ${PORT} -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess | ForEach-Object { Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue }"`, { stdio: 'ignore' });
+            } else {
+                execSync(`fuser -k ${PORT}/tcp`, { stdio: 'ignore' });
+            }
+        } catch (e) {}
+        setTimeout(() => {
+            server.listen(PORT);
+        }, 1000);
+    } else if (err.code === 'EADDRINUSE') {
         console.error(`\n⚠️  Port ${PORT} is currently occupied by another background node process.`);
         console.error(`👉 Run: npx kill-port ${PORT} (or stop existing node server processes) to free the port.\n`);
         process.exit(1);
