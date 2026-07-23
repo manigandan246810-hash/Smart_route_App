@@ -1791,6 +1791,7 @@ export default function AdminDashboard({ token, onLogout }) {
                                         mapMode={mapMode}
                                         onMapModeChange={setMapMode}
                                         focusLabel={selectedOrderForRoute ? selectedOrderForRoute.id : ''}
+                                        selectedTripId={focusedTrip?.id || selectedOrderForRoute?.id || selectedOrderForRoute?.tripId}
                                         visibleOverlays={visibleOverlays}
                                         centerOn={centerCoord}
                                         onTripSelect={(tripId) => {

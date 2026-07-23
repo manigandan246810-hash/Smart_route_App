@@ -348,9 +348,20 @@ class _DriverDashboardState extends State<DriverDashboard> with SingleTickerProv
       final roadRoute = trip['roadRoute'] as List?;
       if (roadRoute == null || roadRoute.isEmpty) return;
 
-      setState(() {
-        _gpsSimIndex = (_gpsSimIndex + 1) % roadRoute.length;
-      });
+      // Single linear progression (No modulo wrapping to prevent infinite loops)
+      if (_gpsSimIndex < roadRoute.length - 1) {
+        setState(() {
+          _gpsSimIndex++;
+        });
+      } else {
+        // Reached end of return route at Warehouse -> Complete trip and stop tracking permanently!
+        if (status == 'Returning' || status == 'Active' || status == 'In Transit') {
+          _movementTimer?.cancel();
+          _movementTimer = null;
+          _completeTrip(trip['id'].toString());
+          return;
+        }
+      }
 
       final currentPos = roadRoute[_gpsSimIndex];
       final lat = currentPos['latitude'] as num?;
@@ -801,6 +812,35 @@ class _DriverDashboardState extends State<DriverDashboard> with SingleTickerProv
       }
     } catch (e) {
       print('Error completing manifest node: $e');
+    }
+  }
+
+  Future<void> _completeTrip(String tripId) async {
+    try {
+      final res = await http.post(
+        Uri.parse('${widget.serverUrl}/api/driver/trip/complete-trip'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ${widget.token}',
+        },
+        body: jsonEncode({'tripId': tripId}),
+      );
+      if (res.statusCode == 200) {
+        if (mounted) {
+          setState(() {
+            _activeTripInfo = null;
+            _gpsSimIndex = 0;
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('🎉 Delivery trip completed & returned to warehouse!'),
+              backgroundColor: Color(0xFF10B981),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      print('Error completing trip: $e');
     }
   }
 

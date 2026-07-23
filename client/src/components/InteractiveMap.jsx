@@ -36,7 +36,8 @@ export default function InteractiveMap({
     onOverlayToggle,
     centerOn,
     focusLabel = '',
-    onTripSelect
+    onTripSelect,
+    selectedTripId = null
 }) {
     const mapContainerRef = useRef(null);
     const mapRef = useRef(null);
@@ -498,55 +499,61 @@ export default function InteractiveMap({
             delete polylinesRef.current[key];
         });
 
-        // Render Quantum Planned Route (Blue dashed line)
-        if (visibleOverlays.quantumRoute) {
-            const rawRoute = routes?.quantumRoute || routes?.quantum?.route || routes?.routeDetails;
-            if (rawRoute && rawRoute.length > 1) {
-                const points = rawRoute.map(node => [node.latitude, node.longitude]);
-                const polyline = L.polyline(points, {
-                    color: '#3b82f6',
-                    weight: 3.5,
-                    opacity: 0.85,
-                    dashArray: '8, 10'
-                }).addTo(map);
-                polylinesRef.current['quantumRoute'] = polyline;
-            }
-        }
+        // Render Navigation Route ONLY when a delivery is selected by Admin
+        const selectedTrip = trips.find(t => t.id === selectedTripId || t.id === selectedTripInfo?.tripId || t.orderIds?.includes(selectedTripId));
 
-        // Render Actual Turn-by-Turn Road Route & Dynamic Progress Trimming
-        if (visibleOverlays.actualRoadRoute) {
-            const rawRoad = routes?.actualRoadRoute || routes?.quantum?.roadRoute || routes?.roadRoute;
-            if (rawRoad && rawRoad.length > 1) {
-                const activeTrip = trips.find(t => t.status === 'Active');
-                const currentIdx = activeTrip?.currentRoadRouteIndex || 0;
+        if (selectedTrip && (selectedTrip.status === 'Active' || selectedTrip.status === 'Assigned' || selectedTrip.status === 'In Transit' || selectedTrip.status === 'Returning')) {
+            const isReturning = selectedTrip.status === 'Returning';
 
-                // 1. Completed Path (Muted translucent route line)
-                if (currentIdx > 0) {
-                    const completedPts = rawRoad.slice(0, currentIdx + 1).map(node => [node.latitude || node.lat, node.longitude || node.lng]);
-                    const completedPolyline = L.polyline(completedPts, {
-                        color: '#64748b',
+            // Render Quantum Planned Route (Blue dashed line)
+            if (visibleOverlays.quantumRoute) {
+                const rawRoute = routes?.quantumRoute || routes?.quantum?.route || routes?.routeDetails || selectedTrip.expectedRoute;
+                if (rawRoute && rawRoute.length > 1) {
+                    const points = rawRoute.map(node => [node.latitude || node.lat, node.longitude || node.lng]);
+                    const polyline = L.polyline(points, {
+                        color: '#3b82f6',
                         weight: 3.5,
-                        opacity: 0.45
+                        opacity: 0.85,
+                        dashArray: '8, 10'
                     }).addTo(map);
-                    polylinesRef.current['completedRoadRoute'] = completedPolyline;
+                    polylinesRef.current['quantumRoute'] = polyline;
                 }
+            }
 
-                // 2. Remaining Active Navigation Route (Vibrant Emerald #10B981)
-                const remainingPts = rawRoad.slice(currentIdx).map(node => [node.latitude || node.lat, node.longitude || node.lng]);
-                if (remainingPts.length > 1) {
-                    const remainingPolyline = L.polyline(remainingPts, {
-                        color: '#10b981',
-                        weight: 5,
-                        opacity: 0.95
-                    }).addTo(map);
-                    polylinesRef.current['actualRoadRoute'] = remainingPolyline;
+            // Render Actual Turn-by-Turn Road Route & Dynamic Progress Trimming
+            if (visibleOverlays.actualRoadRoute) {
+                const rawRoad = routes?.actualRoadRoute || routes?.quantum?.roadRoute || routes?.roadRoute || selectedTrip.roadRoute;
+                if (rawRoad && rawRoad.length > 1) {
+                    const currentIdx = selectedTrip?.currentRoadRouteIndex || 0;
+
+                    // 1. Completed Path (Muted translucent route line)
+                    if (currentIdx > 0) {
+                        const completedPts = rawRoad.slice(0, currentIdx + 1).map(node => [node.latitude || node.lat, node.longitude || node.lng]);
+                        const completedPolyline = L.polyline(completedPts, {
+                            color: '#64748b',
+                            weight: 3.5,
+                            opacity: 0.45
+                        }).addTo(map);
+                        polylinesRef.current['completedRoadRoute'] = completedPolyline;
+                    }
+
+                    // 2. Remaining Active Navigation Route (Vibrant Emerald for Outward / Cyan for Returning)
+                    const remainingPts = rawRoad.slice(currentIdx).map(node => [node.latitude || node.lat, node.longitude || node.lng]);
+                    if (remainingPts.length > 1) {
+                        const remainingPolyline = L.polyline(remainingPts, {
+                            color: isReturning ? '#06b6d4' : '#10b981',
+                            weight: 5,
+                            opacity: 0.95
+                        }).addTo(map);
+                        polylinesRef.current['actualRoadRoute'] = remainingPolyline;
+                    }
                 }
             }
         }
 
-    }, [warehouses, customers, vehicles, drivers, trips, routes, activeStrategy, trafficEvents, visibleOverlays, onTripSelect]);
+    }, [warehouses, customers, vehicles, drivers, trips, routes, activeStrategy, trafficEvents, visibleOverlays, onTripSelect, selectedTripId, selectedTripInfo]);
 
-    const activeTrip = trips.find(t => t.status === 'Active' || t.status === 'Assigned');
+    const activeTrip = trips.find(t => (t.id === selectedTripId || t.orderIds?.includes(selectedTripId)) && (t.status === 'Active' || t.status === 'Assigned' || t.status === 'In Transit' || t.status === 'Returning'));
     const activeDriver = activeTrip ? drivers.find(d => d.id === activeTrip.driverId) : null;
     const activeVehicle = activeTrip ? vehicles.find(v => v.id === activeTrip.vehicleId) : null;
 

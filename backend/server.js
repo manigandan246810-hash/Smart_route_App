@@ -1148,58 +1148,127 @@ app.post('/api/orders/:id/reject', authenticateToken, async (req, res) => {
     }
 });
 
-// Complete single delivery manifest node
+// Driver taps "Delivered" at Client Pin Point (Delivered -> Returning)
+app.post('/api/orders/:id/deliver', authenticateToken, async (req, res) => {
+    try {
+        const orderId = req.params.id;
+        const order = await db.orders.findOne(orderId);
+        if (!order) return res.status(404).json({ message: 'Order not found' });
+
+        // Idempotency: Ignore if already Delivered, Returning, or Completed
+        if (order.status === 'Delivered' || order.status === 'Returning' || order.status === 'Completed') {
+            return res.json({ success: true, message: 'Order already marked as delivered.', status: order.status });
+        }
+
+        await db.orders.update(orderId, { status: 'Delivered', deliveredAt: new Date().toISOString() });
+
+        // Update driver stats
+        const driver = await db.drivers.findOne(req.user.id);
+        if (driver) {
+            await db.drivers.update(req.user.id, {
+                deliveriesMadeToday: (driver.deliveriesMadeToday || 0) + 1
+            });
+        }
+
+        // Transition active trip to 'Returning' phase (Client -> Warehouse)
+        const activeTrip = await db.trips.findByDriver(req.user.id);
+        if (activeTrip) {
+            await db.trips.update(activeTrip.id, { status: 'Returning' });
+        }
+
+        const io = req.app.get('io') || global.io;
+        if (io) {
+            io.emit('order:delivered', { orderId, driverId: req.user.id });
+            io.emit('trip:returning', { tripId: activeTrip?.id, driverId: req.user.id });
+        }
+
+        res.json({ success: true, status: 'Delivered', message: 'Order delivered. Starting return trip to warehouse.' });
+    } catch (e) {
+        res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+// Complete single delivery manifest node (Idempotent node completion)
 app.post('/api/driver/trip/complete-node', authenticateToken, async (req, res) => {
     const { orderId } = req.body;
     const order = await db.orders.findOne(orderId);
     if (!order) return res.status(404).json({ message: 'Order node not found' });
 
-    // Calculate simulated actual delivery duration
+    // Idempotency: Ignore duplicate calls
+    if (order.status === 'Delivered' || order.status === 'Returning' || order.status === 'Completed') {
+        return res.json({ success: true, message: 'Node already processed.' });
+    }
+
     const activeTrip = await db.trips.findByDriver(req.user.id);
     let timeTaken = 15.5;
     if (activeTrip) {
-        timeTaken = Number(((activeTrip.expectedTime / activeTrip.orderIds.length) * (0.85 + Math.random() * 0.2)).toFixed(1));
+        timeTaken = Number(((activeTrip.expectedTime / (activeTrip.orderIds.length || 1)) * (0.85 + Math.random() * 0.2)).toFixed(1));
+        await db.trips.update(activeTrip.id, { status: 'Returning' });
     }
 
     await db.orders.update(orderId, { 
-        status: 'Completed',
-        actualTimeTakenMinutes: timeTaken
+        status: 'Delivered',
+        actualTimeTakenMinutes: timeTaken,
+        deliveredAt: new Date().toISOString()
     });
 
-    // Set driver current GPS to customer location
+    const driver = await db.drivers.findOne(req.user.id);
+    if (driver) {
+        await db.drivers.update(req.user.id, {
+            deliveriesMadeToday: (driver.deliveriesMadeToday || 0) + 1
+        });
+    }
+
     const cust = await db.customers.findOne(order.customerId);
-    if (cust) {
-        await db.drivers.update(req.user.id, { gps: { lat: cust.latitude, lng: cust.longitude } });
-        await db.vehicles.update(order.vehicleId, { latitude: cust.latitude, longitude: cust.longitude });
+    const io = req.app.get('io') || global.io;
+    if (io) {
+        io.emit('order:delivered', { orderId, driverId: req.user.id });
+        io.emit('trip:returning', { tripId: activeTrip?.id, driverId: req.user.id });
     }
 
-    // Check if all orders in driver's active trip are completed
-    if (activeTrip) {
-        const totalOrderObjects = [];
-        for (const oid of activeTrip.orderIds) {
-            const o = await db.orders.findOne(oid);
-            if (o) totalOrderObjects.push(o);
+    res.json({ success: true, status: 'Delivered' });
+});
+
+// Final End of Trip: Driver arrives at Warehouse (Returning -> Completed)
+app.post('/api/driver/trip/complete-trip', authenticateToken, async (req, res) => {
+    try {
+        const { tripId } = req.body;
+        const trip = await db.trips.findOne(tripId);
+        if (!trip) return res.status(404).json({ message: 'Trip not found' });
+
+        // Idempotency check
+        if (trip.status === 'Completed') {
+            return res.json({ success: true, message: 'Trip already completed.' });
         }
-        const pendingCount = totalOrderObjects.filter(o => o.status !== 'Completed').length;
-        if (pendingCount === 0) {
-            const tripTimeTaken = Number((activeTrip.expectedTime * (0.85 + Math.random() * 0.2)).toFixed(1));
-            await db.trips.update(activeTrip.id, { 
-                status: 'Completed',
-                actualTimeTakenMinutes: tripTimeTaken
-            });
-            await db.drivers.update(req.user.id, { status: 'Available' });
-            await db.vehicles.update(activeTrip.vehicleId, { status: 'Available' });
+
+        const tripTimeTaken = Number((trip.expectedTime * (0.85 + Math.random() * 0.2)).toFixed(1));
+        await db.trips.update(tripId, { 
+            status: 'Completed', 
+            actualTimeTakenMinutes: tripTimeTaken,
+            completedAt: new Date().toISOString()
+        });
+
+        // Set Driver & Vehicle back to Available
+        await db.drivers.update(trip.driverId, { status: 'Available' });
+        await db.vehicles.update(trip.vehicleId, { status: 'Available' });
+
+        // Mark associated orders as Completed
+        if (trip.orderIds) {
+            for (const oid of trip.orderIds) {
+                await db.orders.update(oid, { status: 'Completed' });
+            }
         }
+
+        const io = req.app.get('io') || global.io;
+        if (io) {
+            io.emit('trip:completed', { tripId, driverId: trip.driverId });
+            io.emit('system:reset');
+        }
+
+        res.json({ success: true, message: 'Trip completed and archived.' });
+    } catch (e) {
+        res.status(500).json({ success: false, message: e.message });
     }
-
-    await db.notifications.create({
-        title: 'Order Completed',
-        message: `Delivery completed successfully to customer ${cust?.name || ''}.`,
-        type: 'Order',
-        orderId
-    });
-
-    res.json({ success: true });
 });
 
 // SOS Breakdown reporter
