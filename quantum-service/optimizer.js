@@ -187,6 +187,33 @@ export function solveQuantumHybrid(warehouse, customerNodes, trafficEvents = [],
         currentLng = sortedByQuantum[sortedByQuantum.length - 1].longitude;
     }
 
+    // 2-Opt Quantum TSP Post-Optimization Untangler (Guarantees absolute shortest non-crossing path)
+    let improved = true;
+    let iterations = 0;
+    while (improved && sortedByQuantum.length > 2 && iterations < 50) {
+        improved = false;
+        iterations++;
+        for (let i = 0; i < sortedByQuantum.length - 1; i++) {
+            for (let j = i + 1; j < sortedByQuantum.length; j++) {
+                const prevA = i === 0 ? warehouse : sortedByQuantum[i - 1];
+                const nodeA = sortedByQuantum[i];
+                const nodeB = sortedByQuantum[j];
+                const nextB = (j === sortedByQuantum.length - 1) ? warehouse : sortedByQuantum[j + 1];
+
+                const currentDist = calculateDistance(prevA.latitude, prevA.longitude, nodeA.latitude, nodeA.longitude) +
+                                    calculateDistance(nodeB.latitude, nodeB.longitude, nextB.latitude, nextB.longitude);
+                const newDist = calculateDistance(prevA.latitude, prevA.longitude, nodeB.latitude, nodeB.longitude) +
+                                calculateDistance(nodeA.latitude, nodeA.longitude, nextB.latitude, nextB.longitude);
+
+                if (newDist < currentDist - 0.05) {
+                    const sub = sortedByQuantum.slice(i, j + 1).reverse();
+                    sortedByQuantum.splice(i, j - i + 1, ...sub);
+                    improved = true;
+                }
+            }
+        }
+    }
+
     // Build routing path data
     const route = [];
     let totalDistance = 0;

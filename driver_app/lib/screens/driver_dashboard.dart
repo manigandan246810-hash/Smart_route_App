@@ -1430,8 +1430,8 @@ class _DriverDashboardState extends State<DriverDashboard> with SingleTickerProv
                   polylines: [
                     Polyline(
                       points: polylinePoints,
-                      strokeWidth: 3.5,
-                      color: const Color(0xFF8B5CF6),
+                      strokeWidth: 4.5,
+                      color: const Color(0xFF10B981),
                     ),
                   ],
                 ),
