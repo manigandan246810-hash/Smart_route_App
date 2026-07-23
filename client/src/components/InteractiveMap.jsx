@@ -276,7 +276,7 @@ export default function InteractiveMap({
         // 3. Vehicles
         if (visibleOverlays.vehicles) {
             vehicles.forEach(veh => {
-                const activeTrip = trips.find(t => t.vehicleId === veh.id && (t.status === 'Active' || t.status === 'Assigned'));
+                const activeTrip = trips.find(t => t.vehicleId === veh.id && ['Active', 'Assigned', 'In Transit', 'Delivering', 'Returning'].includes(t.status));
                 if (!activeTrip) {
                     allItems.push({
                         type: 'vehicle',
@@ -301,7 +301,7 @@ export default function InteractiveMap({
         if (visibleOverlays.drivers) {
             drivers.forEach(drv => {
                 if (drv.gps && drv.status !== 'Offline') {
-                    const activeTrip = trips.find(t => t.driverId === drv.id && (t.status === 'Active' || t.status === 'Assigned'));
+                    const activeTrip = trips.find(t => t.driverId === drv.id && ['Active', 'Assigned', 'In Transit', 'Delivering', 'Returning'].includes(t.status));
                     if (!activeTrip) {
                         const vehicleNo = drv.vehicleNo || 'None';
                         allItems.push({
@@ -329,7 +329,7 @@ export default function InteractiveMap({
         }
 
         // 5. Active/Travelling Trips (Live Driver Navigation Stream)
-        const activeTrips = trips.filter(t => t.status === 'Active' || t.status === 'Assigned');
+        const activeTrips = trips.filter(t => ['Active', 'Assigned', 'In Transit', 'Delivering', 'Returning'].includes(t.status));
         activeTrips.forEach(trip => {
             const drv = drivers.find(d => d.id === trip.driverId);
             const veh = vehicles.find(v => v.id === trip.vehicleId);
@@ -358,7 +358,7 @@ export default function InteractiveMap({
                 type: 'traveling',
                 lat,
                 lng,
-                rotation,
+                rotation: Number(rotation) || 0,
                 tripId: trip.id,
                 driverName: drv?.name,
                 vehicleNo: veh?.vehicleNo,

@@ -634,26 +634,41 @@ app.post('/api/orders/:id/start-delivery', async (req, res) => {
             };
         }).sort((a, b) => a.totalDistance - b.totalDistance);
 
-        // Notify each driver individually with customized distance and priority label
-        const io = req.app.get('io');
-        rankedDrivers.forEach((rd, idx) => {
-            const rank = idx + 1;
-            io.to(rd.driverId).emit('dispatch:notification', {
+        // Notify drivers (both targeting room and global broadcast so all driver devices receive the alert)
+        const io = req.app.get('io') || global.io;
+        if (io) {
+            const firstDriver = rankedDrivers[0];
+            const notificationPayload = {
                 orderId: order.id,
                 customerName: customer.name,
                 warehouseName: warehouse.name,
                 pickupAddress: warehouse.address,
                 deliveryAddress: customer.address,
-                warehouseDistance: rd.warehouseDistance,
-                deliveryDistance: rd.deliveryDistance,
-                totalDistance: rd.totalDistance,
-                priorityLabel: rd.priority,
-                rank,
+                warehouseDistance: firstDriver?.warehouseDistance || 2.5,
+                deliveryDistance: firstDriver?.deliveryDistance || 5.2,
+                totalDistance: firstDriver?.totalDistance || 7.7,
+                priorityLabel: firstDriver?.priority || '🟢 Near',
+                rank: 1,
                 priority: order.priority,
                 size: order.size,
                 deadline: order.deadline || 'Immediate'
+            };
+
+            // Broadcast globally to all driver devices
+            io.emit('dispatch:notification', notificationPayload);
+
+            rankedDrivers.forEach((rd, idx) => {
+                const rank = idx + 1;
+                io.to(rd.driverId).emit('dispatch:notification', {
+                    ...notificationPayload,
+                    warehouseDistance: rd.warehouseDistance,
+                    deliveryDistance: rd.deliveryDistance,
+                    totalDistance: rd.totalDistance,
+                    priorityLabel: rd.priority,
+                    rank
+                });
             });
-        });
+        }
 
         // Also broadcast the list of notifications globally to Admin so they can watch live ranking
         io.emit('dispatch:admin_notified', { orderId: order.id, rankedDrivers });
