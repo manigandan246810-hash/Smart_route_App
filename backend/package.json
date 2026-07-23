@@ -1,0 +1,21 @@
+{
+    "name": "smartroute-quantum-backend",
+    "version": "1.0.0",
+    "description": "SmartRoute Quantum Backend Server",
+    "main": "server.js",
+    "type": "module",
+    "scripts": {
+        "start": "node server.js",
+        "dev": "node server.js"
+    },
+    "dependencies": {
+        "bcryptjs": "^2.4.3",
+        "cors": "^2.8.5",
+        "dotenv": "^17.4.2",
+        "express": "^4.19.2",
+        "jsonwebtoken": "^9.0.2",
+        "mongoose": "^9.7.4",
+        "socket.io": "^4.8.3",
+        "uuid": "^9.0.1"
+    }
+}

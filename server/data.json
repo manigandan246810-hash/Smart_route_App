@@ -1,0 +1,198 @@
+{
+  "users": [
+    {
+      "id": "usr-1",
+      "name": "Admin User",
+      "email": "admin@smartroute.com",
+      "password": "admin123",
+      "role": "admin"
+    },
+    {
+      "id": "usr-2",
+      "name": "Rajesh Kumar",
+      "email": "driver1@smartroute.com",
+      "password": "driver123",
+      "role": "driver"
+    },
+    {
+      "id": "usr-3",
+      "name": "Suresh Raina",
+      "email": "driver2@smartroute.com",
+      "password": "driver123",
+      "role": "driver"
+    },
+    {
+      "id": "usr-4",
+      "name": "Kumar Logan",
+      "email": "driver3@smartroute.com",
+      "password": "driver123",
+      "role": "driver"
+    }
+  ],
+  "warehouses": [
+    {
+      "id": "wh-1",
+      "name": "Chennai Central Hub",
+      "latitude": 13.0827,
+      "longitude": 80.2707,
+      "address": "Chennai Central Station Rd, TN 600003"
+    },
+    {
+      "id": "wh-2",
+      "name": "Guindy Industrial Depot",
+      "latitude": 13.0067,
+      "longitude": 80.2206,
+      "address": "Guindy Industrial Estate, Chennai, TN 600032"
+    }
+  ],
+  "drivers": [
+    {
+      "id": "usr-2",
+      "name": "Rajesh Kumar",
+      "phone": "+91 98765 43210",
+      "vehicleId": "veh-1"
+    },
+    {
+      "id": "usr-3",
+      "name": "Suresh Raina",
+      "phone": "+91 97654 32109",
+      "vehicleId": "veh-2"
+    },
+    {
+      "id": "usr-4",
+      "name": "Kumar Logan",
+      "phone": "+91 96543 21098",
+      "vehicleId": "veh-3"
+    }
+  ],
+  "vehicles": [
+    {
+      "id": "veh-1",
+      "vehicleNo": "TN-01-AX-1234",
+      "capacity": 500,
+      "status": "Available",
+      "warehouseId": "wh-1",
+      "driverId": "usr-2",
+      "latitude": 13.033,
+      "longitude": 80.269
+    },
+    {
+      "id": "veh-2",
+      "vehicleNo": "TN-09-BY-5678",
+      "capacity": 800,
+      "status": "Available",
+      "warehouseId": "wh-2",
+      "driverId": "usr-3",
+      "latitude": 13.0067,
+      "longitude": 80.2206
+    },
+    {
+      "id": "veh-3",
+      "vehicleNo": "TN-07-CZ-9012",
+      "capacity": 300,
+      "status": "Available",
+      "warehouseId": "wh-1",
+      "driverId": "usr-4",
+      "latitude": 13.0827,
+      "longitude": 80.2707
+    }
+  ],
+  "customers": [
+    {
+      "id": "cust-1",
+      "name": "Mylapore Retailers",
+      "latitude": 13.033,
+      "longitude": 80.269,
+      "address": "Mylapore, Chennai",
+      "priority": "High"
+    },
+    {
+      "id": "cust-2",
+      "name": "Nungambakkam Supermarket",
+      "latitude": 13.06,
+      "longitude": 80.24,
+      "address": "Nungambakkam, Chennai",
+      "priority": "Medium"
+    },
+    {
+      "id": "cust-3",
+      "name": "Adyar Logistics Depot",
+      "latitude": 12.9982,
+      "longitude": 80.2564,
+      "address": "Adyar, Chennai",
+      "priority": "Medium"
+    },
+    {
+      "id": "cust-4",
+      "name": "Velachery Bazaar",
+      "latitude": 12.9796,
+      "longitude": 80.2245,
+      "address": "Velachery, Chennai",
+      "priority": "Low"
+    },
+    {
+      "id": "cust-5",
+      "name": "Anna Nagar Mall",
+      "latitude": 13.085,
+      "longitude": 80.21,
+      "address": "Anna Nagar, Chennai",
+      "priority": "High"
+    },
+    {
+      "id": "cust-6",
+      "name": "T-Nagar Plaza Store",
+      "latitude": 13.0418,
+      "longitude": 80.2337,
+      "address": "T-Nagar, Chennai",
+      "priority": "High"
+    }
+  ],
+  "orders": [
+    {
+      "id": "ord-1",
+      "customerId": "cust-1",
+      "warehouseId": "wh-1",
+      "vehicleId": "veh-1",
+      "status": "Completed",
+      "size": 150,
+      "deadline": "3 Hours",
+      "createdAt": "2026-07-16T05:28:54.417Z",
+      "path": []
+    },
+    {
+      "id": "ord-2",
+      "customerId": "cust-3",
+      "warehouseId": "wh-2",
+      "vehicleId": "veh-2",
+      "status": "Pending",
+      "size": 220,
+      "deadline": "5 Hours",
+      "createdAt": "2026-07-16T05:28:54.419Z",
+      "path": []
+    },
+    {
+      "id": "ord-3",
+      "customerId": "cust-4",
+      "warehouseId": "wh-2",
+      "vehicleId": "veh-2",
+      "status": "Pending",
+      "size": 80,
+      "deadline": "8 Hours",
+      "createdAt": "2026-07-16T05:28:54.419Z",
+      "path": []
+    },
+    {
+      "id": "ord-4",
+      "customerId": "cust-6",
+      "warehouseId": "wh-1",
+      "vehicleId": "veh-3",
+      "status": "Pending",
+      "size": 210,
+      "deadline": "2 Hours",
+      "createdAt": "2026-07-16T05:28:54.419Z",
+      "path": []
+    }
+  ],
+  "trafficEvents": [],
+  "vehicleEvents": []
+}
